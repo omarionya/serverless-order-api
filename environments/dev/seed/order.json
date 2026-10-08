@@ -1,0 +1,28 @@
+{
+  "order_id": {
+    "S": "sample-order-001"
+  },
+  "customer_id": {
+    "S": "customer-123"
+  },
+  "status": {
+    "S": "CREATED"
+  },
+  "created_at": {
+    "S": "2026-10-08T09:00:00Z"
+  },
+  "items": {
+    "L": [
+      {
+        "M": {
+          "product_id": {
+            "S": "product-001"
+          },
+          "quantity": {
+            "N": "2"
+          }
+        }
+      }
+    ]
+  }
+}
