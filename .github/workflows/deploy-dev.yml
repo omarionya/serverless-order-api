@@ -1,0 +1,77 @@
+name: Deploy dev
+on:
+  workflow_dispatch:
+    inputs:
+      apply:
+        description: 'Apply the generated plan (false means plan only)'
+        type: boolean
+        default: false
+permissions:
+  contents: read
+concurrency:
+  group: order-api-dev-terraform
+  cancel-in-progress: false
+jobs:
+  deploy:
+    if: github.ref == 'refs/heads/main'
+    environment: dev
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      TF_IN_AUTOMATION: 'true'
+      TF_INPUT: 'false'
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      STATE_BUCKET: ${{ vars.TF_STATE_BUCKET }}
+      STATE_KEY: ${{ vars.TF_STATE_KEY }}
+      TFVARS_JSON: ${{ secrets.DEV_TFVARS_JSON }}
+      TERRAFORM_VERSION: ${{ vars.TERRAFORM_VERSION }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ vars.TERRAFORM_VERSION }}
+          terraform_wrapper: false
+      - name: Check settings and write dev inputs
+        run: |
+          test -n "$TERRAFORM_VERSION"
+          test -n "$AWS_REGION"
+          test -n "$STATE_BUCKET"
+          test -n "$STATE_KEY"
+          test -n "$TFVARS_JSON"
+          python3 - <<'PYTHON'
+          import json, os
+          from pathlib import Path
+          data = json.loads(os.environ['TFVARS_JSON'])
+          if not isinstance(data, dict):
+              raise SystemExit('DEV_TFVARS_JSON must be a JSON object')
+          target = Path('environment/dev/ci.auto.tfvars.json')
+          target.write_text(json.dumps(data))
+          target.chmod(0o600)
+          PYTHON
+      - name: Checks before AWS authentication
+        run: bash scripts/ci_checks.sh
+      - uses: aws-actions/configure-aws-credentials@v6.3.0
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+          allowed-account-ids: ${{ vars.AWS_ACCOUNT_ID }}
+          role-session-name: github-${{ github.run_id }}
+      - name: Initialize existing dev state
+        run: |
+          terraform -chdir=environment/dev init -reconfigure -input=false -lockfile=readonly             -backend-config="bucket=$STATE_BUCKET"             -backend-config="key=$STATE_KEY"             -backend-config="region=$AWS_REGION"             -backend-config="encrypt=true"             -backend-config="use_lockfile=true"
+      - name: Plan
+        run: terraform -chdir=environment/dev plan -input=false -lock-timeout=5m -out=dev.tfplan
+      - name: Apply this run's plan
+        if: inputs.apply
+        run: terraform -chdir=environment/dev apply -input=false -lock-timeout=5m dev.tfplan
+      - name: Remove temporary inputs and plan
+        if: always()
+        run: rm -f environment/dev/ci.auto.tfvars.json environment/dev/dev.tfplan

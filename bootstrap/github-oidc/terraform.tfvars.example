@@ -1,0 +1,7 @@
+aws_region        = "us-east-1"
+github_repository = "YOUR-GITHUB-OWNER/YOUR-REPOSITORY"
+state_bucket      = "YOUR-EXISTING-TERRAFORM-STATE-BUCKET"
+state_key         = "order-api/dev/terraform.tfstate"
+resource_prefix   = "order-api-dev"
+# If your AWS account already has this provider, supply its ARN:
+# existing_oidc_provider_arn = "arn:aws:iam::919466768129:oidc-provider/token.actions.githubusercontent.com"

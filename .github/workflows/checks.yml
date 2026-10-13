@@ -1,0 +1,28 @@
+name: Checks
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  checks:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ vars.TERRAFORM_VERSION }}
+          terraform_wrapper: false
+      - name: Check required version setting
+        env:
+          TERRAFORM_VERSION: ${{ vars.TERRAFORM_VERSION }}
+        run: test -n "$TERRAFORM_VERSION"
+      - name: Offline tests and Terraform validation
+        run: bash scripts/ci_checks.sh
