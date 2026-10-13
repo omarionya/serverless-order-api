@@ -86,6 +86,38 @@ jobs:
           PYTHON
       - name: Checks before AWS authentication
         run: bash scripts/ci_checks.sh
+
+      - name: Inspect OIDC identity
+        shell: bash
+        run: |
+          python3 - <<'PYTHON'
+          import base64
+          import json
+          import os
+          import urllib.request
+
+          url = os.environ["ACTIONS_ID_TOKEN_REQUEST_URL"]
+          separator = "&" if "?" in url else "?"
+          request = urllib.request.Request(
+              url + separator + "audience=sts.amazonaws.com",
+              headers={
+                  "Authorization": (
+                      "Bearer " + os.environ["ACTIONS_ID_TOKEN_REQUEST_TOKEN"]
+                  )
+              },
+          )
+
+          with urllib.request.urlopen(request) as response:
+              token = json.load(response)["value"]
+
+          payload = token.split(".")[1]
+          payload += "=" * (-len(payload) % 4)
+          claims = json.loads(base64.urlsafe_b64decode(payload))
+
+          print("OIDC subject:", claims["sub"])
+          print("OIDC audience:", claims["aud"])
+          PYTHON
+
       - uses: aws-actions/configure-aws-credentials@v6.3.0
         with:
           role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
