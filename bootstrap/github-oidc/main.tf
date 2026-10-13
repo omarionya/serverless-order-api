@@ -128,10 +128,13 @@ resource "aws_iam_role_policy" "deploy" {
         Resource = "arn:${local.partition}:iam::aws:policy/service-role/AmazonAPIGatewayPushToCloudWatchLogs"
       },
       {
-        Sid      = "PublisherFailureBuckets"
-        Effect   = "Allow"
-        Action   = "s3:*"
-        Resource = ["arn:${local.partition}:s3:::${var.resource_prefix}*", "arn:${local.partition}:s3:::${var.resource_prefix}*/*"]
+        Sid    = "PublisherFailureBuckets"
+        Effect = "Allow"
+        Action = "s3:*"
+        Resource = [
+          "arn:${local.partition}:s3:::order-outbox-failures-d3356246b5e9eba7673cf0777c",
+          "arn:${local.partition}:s3:::order-outbox-failures-d3356246b5e9eba7673cf0777c/*"
+        ]
       },
       {
         Sid      = "StateBucketList"
