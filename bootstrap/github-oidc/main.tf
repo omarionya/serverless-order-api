@@ -32,12 +32,44 @@ variable "tags" {
   type    = map(string)
   default = { Project = "order-api", Environment = "dev", ManagedBy = "Terraform" }
 }
+
+variable "github_owner_id" {
+  description = "Numeric GitHub owner ID."
+  type        = string
+
+  validation {
+    condition     = can(regex("^[0-9]+$", var.github_owner_id))
+    error_message = "GitHub owner ID must contain only digits."
+  }
+}
+
+variable "github_repository_id" {
+  description = "Numeric GitHub repository ID."
+  type        = string
+
+  validation {
+    condition     = can(regex("^[0-9]+$", var.github_repository_id))
+    error_message = "GitHub repository ID must contain only digits."
+  }
+}
 data "aws_caller_identity" "current" {}
 data "aws_partition" "current" {}
 locals {
-  account      = data.aws_caller_identity.current.account_id
-  partition    = data.aws_partition.current.partition
-  provider_arn = var.existing_oidc_provider_arn != "" ? var.existing_oidc_provider_arn : aws_iam_openid_connect_provider.github[0].arn
+  account           = data.aws_caller_identity.current.account_id
+  partition         = data.aws_partition.current.partition
+  provider_arn      = var.existing_oidc_provider_arn != "" ? var.existing_oidc_provider_arn : aws_iam_openid_connect_provider.github[0].arn
+  github_owner_name = split("/", var.github_repository)[0]
+  github_repo_name  = split("/", var.github_repository)[1]
+
+  github_oidc_subject = format(
+    "repo:%s@%s/%s@%s:environment:dev",
+    local.github_owner_name,
+    var.github_owner_id,
+    local.github_repo_name,
+    var.github_repository_id
+  )
+
+
 }
 resource "aws_iam_openid_connect_provider" "github" {
   count          = var.existing_oidc_provider_arn == "" ? 1 : 0
@@ -53,10 +85,12 @@ resource "aws_iam_role" "deploy" {
       Effect    = "Allow"
       Principal = { Federated = local.provider_arn }
       Action    = "sts:AssumeRoleWithWebIdentity"
-      Condition = { StringEquals = {
-        "token.actions.githubusercontent.com:aud" = "sts.amazonaws.com"
-        "token.actions.githubusercontent.com:sub" = "repo:${var.github_repository}:environment:dev"
-      } }
+      Condition = {
+        StringEquals = {
+          "token.actions.githubusercontent.com:aud" = "sts.amazonaws.com"
+          "token.actions.githubusercontent.com:sub" = local.github_oidc_subject
+        }
+      }
     }]
   })
 }
