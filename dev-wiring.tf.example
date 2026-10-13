@@ -1,0 +1,52 @@
+# Merge these blocks into environment/dev/main.tf.
+# Replace the existing database and order_lambda blocks; do not duplicate them.
+# Keep your existing auth, api, and waf blocks unchanged.
+
+module "database" {
+  source                            = "../../modules/database"
+  table_name                        = "${var.project}-${var.environment}-orders"
+  billing_mode                      = "PAY_PER_REQUEST"
+  point_in_time_recovery_enabled     = true
+  deletion_protection_enabled       = false
+  tags = {
+    Environment = var.environment
+    Project     = var.project
+  }
+}
+
+module "order_lambda" {
+  source                 = "../../modules/lambda"
+  function_name          = "${var.project}-${var.environment}-order-api"
+  orders_table_name      = module.database.table_name
+  orders_table_arn       = module.database.table_arn
+  idempotency_table_name = module.database.idempotency_table_name
+  idempotency_table_arn  = module.database.idempotency_table_arn
+  outbox_table_name      = module.database.outbox_table_name
+  outbox_table_arn       = module.database.outbox_table_arn
+  handler_file          = "${path.module}/../../services/order_api/src/handler.py"
+  log_retention_days    = 14
+  tags = {
+    Component = "OrderAPI"
+  }
+}
+
+module "event_bus" {
+  source = "../../modules/event_bus"
+  name   = "${var.project}-${var.environment}-events"
+  tags = {
+    Component = "OrderEvents"
+  }
+}
+
+module "outbox_publisher" {
+  source            = "../../modules/outbox_publisher"
+  function_name     = "${var.project}-${var.environment}-outbox-publisher"
+  outbox_stream_arn = module.database.outbox_stream_arn
+  event_bus_arn     = module.event_bus.bus_arn
+  handler_file      = "${path.module}/../../services/outbox_publisher/src/handler.py"
+  tags = {
+    Component = "OutboxPublisher"
+  }
+  # Install the verification target before beginning stream publication.
+  depends_on = [module.event_bus]
+}
