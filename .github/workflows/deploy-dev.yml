@@ -40,21 +40,49 @@ jobs:
           terraform_version: ${{ vars.TERRAFORM_VERSION }}
           terraform_wrapper: false
       - name: Check settings and write dev inputs
+        shell: bash
         run: |
-          test -n "$TERRAFORM_VERSION"
-          test -n "$AWS_REGION"
-          test -n "$STATE_BUCKET"
-          test -n "$STATE_KEY"
-          test -n "$TFVARS_JSON"
           python3 - <<'PYTHON'
-          import json, os
+          import json
+          import os
           from pathlib import Path
-          data = json.loads(os.environ['TFVARS_JSON'])
+
+          required = {
+              "TERRAFORM_VERSION": "repository variable TERRAFORM_VERSION",
+              "AWS_REGION": "dev environment variable AWS_REGION",
+              "STATE_BUCKET": "dev environment variable TF_STATE_BUCKET",
+              "STATE_KEY": "dev environment variable TF_STATE_KEY",
+              "TFVARS_JSON": "dev environment secret DEV_TFVARS_JSON",
+          }
+
+          missing = [
+              setting
+              for name, setting in required.items()
+              if not os.environ.get(name, "").strip()
+          ]
+
+          if missing:
+              for setting in missing:
+                  print(f"::error::Missing {setting}")
+              raise SystemExit(1)
+
+          try:
+              data = json.loads(os.environ["TFVARS_JSON"])
+          except json.JSONDecodeError as error:
+              print(
+                  "::error::DEV_TFVARS_JSON contains invalid JSON "
+                  f"at line {error.lineno}, column {error.colno}"
+              )
+              raise SystemExit(1)
+
           if not isinstance(data, dict):
-              raise SystemExit('DEV_TFVARS_JSON must be a JSON object')
-          target = Path('environment/dev/ci.auto.tfvars.json')
+              print("::error::DEV_TFVARS_JSON must be a JSON object")
+              raise SystemExit(1)
+
+          target = Path("environment/dev/ci.auto.tfvars.json")
           target.write_text(json.dumps(data))
           target.chmod(0o600)
+          print("Required settings checked and Terraform inputs written.")
           PYTHON
       - name: Checks before AWS authentication
         run: bash scripts/ci_checks.sh
