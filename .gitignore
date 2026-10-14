@@ -7,6 +7,8 @@
 *.tfvars
 !*.tfvars.example
 .venv
+.tfvars
+.terrform.lock.hcl
 __pycache__/
 *.pyc
 work/
