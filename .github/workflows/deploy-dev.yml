@@ -29,7 +29,7 @@ jobs:
       TFVARS_JSON: ${{ secrets.DEV_TFVARS_JSON }}
       TERRAFORM_VERSION: ${{ vars.TERRAFORM_VERSION }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
       - uses: actions/setup-python@v5
