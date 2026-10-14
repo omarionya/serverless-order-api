@@ -134,4 +134,4 @@ jobs:
         run: terraform -chdir=environments/dev apply -input=false -lock-timeout=5m dev.tfplan
       - name: Remove temporary inputs and plan
         if: always()
-        run: rm -f environments/dev/ci.auto.tfvars.json environment/dev/dev.tfplan
+        run: rm -f environments/dev/ci.auto.tfvars.json environments/dev/dev.tfplan
