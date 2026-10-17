@@ -3,6 +3,7 @@
 These tests verify application control flow, not live AWS or SDK behavior.
 Run: python3 scripts/test_handlers.py
 """
+
 import importlib.util
 import json
 import os
@@ -28,13 +29,15 @@ class ClientError(Exception):
 
 errors = types.ModuleType("botocore.exceptions")
 errors.ClientError = ClientError
-sys.modules.update({
-    "boto3": sdk,
-    "boto3.dynamodb": types.ModuleType("boto3.dynamodb"),
-    "boto3.dynamodb.types": ddb_types,
-    "botocore": types.ModuleType("botocore"),
-    "botocore.exceptions": errors
-})
+sys.modules.update(
+    {
+        "boto3": sdk,
+        "boto3.dynamodb": types.ModuleType("boto3.dynamodb"),
+        "boto3.dynamodb.types": ddb_types,
+        "botocore": types.ModuleType("botocore"),
+        "botocore.exceptions": errors,
+    }
+)
 root = Path(__file__).resolve().parents[1]
 
 
@@ -51,12 +54,15 @@ publisher = load("publisher_handler", root / "services/outbox_publisher/src/hand
 
 class HandlerTests(unittest.TestCase):
     def setUp(self):
-        self.env = patch.dict(os.environ, {
-            "ORDERS_TABLE": "orders",
-            "IDEMPOTENCY_TABLE": "idempotency",
-            "OUTBOX_TABLE": "outbox",
-            "EVENT_BUS_ARN": "test-bus"
-        })
+        self.env = patch.dict(
+            os.environ,
+            {
+                "ORDERS_TABLE": "orders",
+                "IDEMPOTENCY_TABLE": "idempotency",
+                "OUTBOX_TABLE": "outbox",
+                "EVENT_BUS_ARN": "test-bus",
+            },
+        )
         self.env.start()
         self.addCleanup(self.env.stop)
         api.dynamodb = MagicMock()
@@ -69,14 +75,16 @@ class HandlerTests(unittest.TestCase):
             "resource": "/orders",
             "headers": {"Idempotency-Key": "test-001"},
             "requestContext": {"authorizer": {"claims": {"sub": "customer-a"}}},
-            "body": json.dumps({"items": [{"product_id": "p1", "quantity": 2}]})
+            "body": json.dumps({"items": [{"product_id": "p1", "quantity": 2}]}),
         }
 
     def test_atomic_three_item_write(self):
         result = api.lambda_handler(self.event, None)
         self.assertEqual(result["statusCode"], 201)
         writes = api.transaction_client.transact_write_items.call_args.kwargs["TransactItems"]
-        self.assertEqual([item["Put"]["TableName"] for item in writes], ["idempotency", "orders", "outbox"])
+        self.assertEqual(
+            [item["Put"]["TableName"] for item in writes], ["idempotency", "orders", "outbox"]
+        )
         order = writes[1]["Put"]["Item"]
         detail = json.loads(writes[2]["Put"]["Item"]["detail_json"])
         self.assertEqual(order["customer_id"], "customer-a")
@@ -84,14 +92,21 @@ class HandlerTests(unittest.TestCase):
         self.assertEqual(detail["event_id"], writes[2]["Put"]["Item"]["event_id"])
 
     def replay_record(self):
-        request_hash = api.hashlib.sha256(json.dumps(
-            {"items": [{"product_id": "p1", "quantity": 2}]},
-            sort_keys=True, separators=(",", ":")
-        ).encode()).hexdigest()
+        request_hash = api.hashlib.sha256(
+            json.dumps(
+                {"items": [{"product_id": "p1", "quantity": 2}]},
+                sort_keys=True,
+                separators=(",", ":"),
+            ).encode()
+        ).hexdigest()
         return {
             "expires_at": int(api.time.time()) + 1000,
             "request_hash": request_hash,
-            "response": {"order_id": "original-order", "status": "CREATED", "created_at": "original-time"}
+            "response": {
+                "order_id": "original-order",
+                "status": "CREATED",
+                "created_at": "original-time",
+            },
         }
 
     def test_retry_returns_original_without_writes(self):
@@ -115,9 +130,9 @@ class HandlerTests(unittest.TestCase):
 
     def test_concurrent_winner_is_replayed(self):
         api.dynamodb.Table.return_value.get_item.side_effect = [{}, {"Item": self.replay_record()}]
-        api.transaction_client.transact_write_items.side_effect = ClientError({
-            "Error": {"Code": "TransactionCanceledException"}
-        })
+        api.transaction_client.transact_write_items.side_effect = ClientError(
+            {"Error": {"Code": "TransactionCanceledException"}}
+        )
         result = api.lambda_handler(self.event, None)
         self.assertEqual(json.loads(result["body"])["order_id"], "original-order")
 
@@ -127,8 +142,12 @@ class HandlerTests(unittest.TestCase):
         api.transaction_client.transact_write_items.assert_not_called()
 
     def test_cross_customer_read_hidden(self):
-        api.dynamodb.Table.return_value.get_item.return_value = {"Item": {"customer_id": "customer-b"}}
-        self.event.update(httpMethod="GET", resource="/orders/{id}", pathParameters={"id": "order-1"})
+        api.dynamodb.Table.return_value.get_item.return_value = {
+            "Item": {"customer_id": "customer-b"}
+        }
+        self.event.update(
+            httpMethod="GET", resource="/orders/{id}", pathParameters={"id": "order-1"}
+        )
         self.assertEqual(api.lambda_handler(self.event, None)["statusCode"], 404)
 
     def test_failed_putevents_reports_stream_sequence(self):
@@ -136,18 +155,20 @@ class HandlerTests(unittest.TestCase):
         publisher.deserializer.deserialize.side_effect = lambda value: value
         publisher.events.put_events.return_value = {
             "FailedEntryCount": 1,
-            "Entries": [{"ErrorCode": "InternalFailure"}]
+            "Entries": [{"ErrorCode": "InternalFailure"}],
         }
         record = {
             "eventName": "INSERT",
             "dynamodb": {
                 "SequenceNumber": "123",
                 "NewImage": {
-                    "event_id": "stable-1", "source": "com.example.orders",
-                    "detail_type": "OrderCreated", "detail_json": "{}",
-                    "created_at": "2026-10-11T10:00:00+00:00"
-                }
-            }
+                    "event_id": "stable-1",
+                    "source": "com.example.orders",
+                    "detail_type": "OrderCreated",
+                    "detail_json": "{}",
+                    "created_at": "2026-10-11T10:00:00+00:00",
+                },
+            },
         }
         with patch.object(publisher.logger, "exception"):
             result = publisher.lambda_handler({"Records": [record, record]}, None)

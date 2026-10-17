@@ -8,6 +8,7 @@
 !*.tfvars.example
 .venv
 .tfvars
+.venv-security/
 .terrform.lock.hcl
 __pycache__/
 *.pyc

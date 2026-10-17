@@ -1,4 +1,5 @@
 """Offline tests for audit decisions and pagination; no AWS SDK needed."""
+
 import ast
 import hashlib
 import importlib.util
@@ -41,18 +42,27 @@ class FakeTable:
 class AuditTests(unittest.TestCase):
     def setUp(self):
         self.now = datetime(2026, 10, 12, 12, 0, tzinfo=timezone.utc)
-        self.detail = {"event_id": "event-1", "order_id": "order-1", "items": [{"product_id": "p1", "quantity": 3}]}
-        self.row = {
-            "event_id": "event-1", "created_at": "2026-10-12T10:00:00+00:00",
-            "detail_json": json.dumps(self.detail)
+        self.detail = {
+            "event_id": "event-1",
+            "order_id": "order-1",
+            "items": [{"product_id": "p1", "quantity": 3}],
         }
-        fingerprint = hashlib.sha256(json.dumps(self.detail, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+        self.row = {
+            "event_id": "event-1",
+            "created_at": "2026-10-12T10:00:00+00:00",
+            "detail_json": json.dumps(self.detail),
+        }
+        fingerprint = hashlib.sha256(
+            json.dumps(self.detail, sort_keys=True, separators=(",", ":")).encode()
+        ).hexdigest()
         self.tables = {
             "outbox": FakeTable(rows=[self.row]),
             "orders": FakeTable({"order-1": {"status": "PROCESSING"}}),
             "processed": FakeTable({"event-1": {"event_hash": fingerprint}}),
-            "notifications": FakeTable({"event-1": {"event_hash": fingerprint, "delivery_status": "PENDING"}}),
-            "analytics": FakeTable({"event-1": {"event_hash": fingerprint}})
+            "notifications": FakeTable(
+                {"event-1": {"event_hash": fingerprint, "delivery_status": "PENDING"}}
+            ),
+            "analytics": FakeTable({"event-1": {"event_hash": fingerprint}}),
         }
 
     def run_audit(self, **kwargs):
@@ -91,7 +101,9 @@ class AuditTests(unittest.TestCase):
         self.tables["notifications"].items["event-1"].update(
             delivery_status="SENDING", attempt_started_at="2026-10-12T10:05:00+00:00"
         )
-        self.assertEqual(self.run_audit(include_email=True)["findings"][0]["kind"], "email_stale_sending")
+        self.assertEqual(
+            self.run_audit(include_email=True)["findings"][0]["kind"], "email_stale_sending"
+        )
 
     def test_payload_fingerprint_mismatch_is_reported(self):
         self.tables["analytics"].items["event-1"]["event_hash"] = "wrong"
@@ -108,8 +120,20 @@ class AuditTests(unittest.TestCase):
 
     def test_aws_operations_are_read_only(self):
         tree = ast.parse(path.read_text())
-        names = {node.func.attr for node in ast.walk(tree) if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)}
-        for operation in ("put_item", "update_item", "delete_item", "put_events", "send_email", "invoke", "publish"):
+        names = {
+            node.func.attr
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+        }
+        for operation in (
+            "put_item",
+            "update_item",
+            "delete_item",
+            "put_events",
+            "send_email",
+            "invoke",
+            "publish",
+        ):
             self.assertNotIn(operation, names)
 
 

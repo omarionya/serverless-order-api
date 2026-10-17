@@ -42,7 +42,10 @@ def parse_event(record):
     for item in items:
         if not isinstance(item, dict) or set(item) != {"product_id", "quantity"}:
             raise ValueError("Invalid item structure.")
-        if not isinstance(item["product_id"], str) or not 1 <= len(item["product_id"].strip()) <= 128:
+        if (
+            not isinstance(item["product_id"], str)
+            or not 1 <= len(item["product_id"].strip()) <= 128
+        ):
             raise ValueError("Invalid product ID.")
         if type(item["quantity"]) is not int or not 1 <= item["quantity"] <= 1000:
             raise ValueError("Invalid quantity.")
@@ -79,7 +82,7 @@ def process_record(record):
         "created_at": detail["created_at"],
         "recorded_at": datetime.now(timezone.utc).isoformat(),
         "items": detail["items"],
-        "total_units": sum(product["quantity"] for product in detail["items"])
+        "total_units": sum(product["quantity"] for product in detail["items"]),
     }
     if kind == "notifications":
         item.update(delivery_status="PENDING", notification_type="ORDER_CONFIRMATION")
@@ -91,10 +94,16 @@ def process_record(record):
     except ClientError as error:
         if error.response["Error"]["Code"] == "ConditionalCheckFailedException":
             if duplicate(table, detail["event_id"], fingerprint):
-                logger.info("Concurrent duplicate skipped: consumer=%s event_id=%s", kind, detail["event_id"])
+                logger.info(
+                    "Concurrent duplicate skipped: consumer=%s event_id=%s",
+                    kind,
+                    detail["event_id"],
+                )
                 return
         raise
-    logger.info("%s recorded: order_id=%s event_id=%s", kind, detail["order_id"], detail["event_id"])
+    logger.info(
+        "%s recorded: order_id=%s event_id=%s", kind, detail["order_id"], detail["event_id"]
+    )
 
 
 def lambda_handler(event, context):

@@ -23,13 +23,17 @@ def lambda_handler(event, context):
                 key: deserializer.deserialize(value)
                 for key, value in record["dynamodb"]["NewImage"].items()
             }
-            result = events.put_events(Entries=[{
-                "EventBusName": os.environ["EVENT_BUS_ARN"],
-                "Source": item["source"],
-                "DetailType": item["detail_type"],
-                "Detail": item["detail_json"],
-                "Time": datetime.fromisoformat(item["created_at"])
-            }])
+            result = events.put_events(
+                Entries=[
+                    {
+                        "EventBusName": os.environ["EVENT_BUS_ARN"],
+                        "Source": item["source"],
+                        "DetailType": item["detail_type"],
+                        "Detail": item["detail_json"],
+                        "Time": datetime.fromisoformat(item["created_at"]),
+                    }
+                ]
+            )
             # An HTTP 200 alone does not imply successful event publication.
             entry = result["Entries"][0]
             if result.get("FailedEntryCount", 0) or not entry.get("EventId"):

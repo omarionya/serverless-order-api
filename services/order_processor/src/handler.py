@@ -50,7 +50,10 @@ def parse_event(record):
     for item in items:
         if not isinstance(item, dict) or set(item) != {"product_id", "quantity"}:
             raise ValueError("Invalid item structure.")
-        if not isinstance(item["product_id"], str) or not 1 <= len(item["product_id"].strip()) <= 128:
+        if (
+            not isinstance(item["product_id"], str)
+            or not 1 <= len(item["product_id"].strip()) <= 128
+        ):
             raise ValueError("Invalid product ID.")
         if type(item["quantity"]) is not int or not 1 <= item["quantity"] <= 1000:
             raise ValueError("Invalid quantity.")
@@ -85,7 +88,7 @@ def process_record(record):
         "event_id": event_id,
         "event_hash": fingerprint,
         "order_id": detail["order_id"],
-        "processed_at": processed_at
+        "processed_at": processed_at,
     }
 
     try:
@@ -94,28 +97,32 @@ def process_record(record):
         transaction_client.transact_write_items(
             ClientRequestToken=str(uuid.uuid4()),
             TransactItems=[
-                {"Put": {
-                    "TableName": os.environ["PROCESSED_EVENTS_TABLE"],
-                    "Item": typed_item(dedupe_record),
-                    "ConditionExpression": "attribute_not_exists(event_id)"
-                }},
-                {"Update": {
-                    "TableName": os.environ["ORDERS_TABLE"],
-                    "Key": {"order_id": {"S": detail["order_id"]}},
-                    "UpdateExpression": "SET #status = :processing, processing_event_id = :event, processing_started_at = :now",
-                    "ConditionExpression": "attribute_exists(order_id) AND #status = :created AND customer_id = :customer AND created_at = :created_at AND #items = :items",
-                    "ExpressionAttributeNames": {"#status": "status", "#items": "items"},
-                    "ExpressionAttributeValues": {
-                        ":processing": {"S": "PROCESSING"},
-                        ":created": {"S": "CREATED"},
-                        ":customer": {"S": detail["customer_id"]},
-                        ":created_at": {"S": detail["created_at"]},
-                        ":items": serializer.serialize(detail["items"]),
-                        ":event": {"S": event_id},
-                        ":now": {"S": processed_at}
+                {
+                    "Put": {
+                        "TableName": os.environ["PROCESSED_EVENTS_TABLE"],
+                        "Item": typed_item(dedupe_record),
+                        "ConditionExpression": "attribute_not_exists(event_id)",
                     }
-                }}
-            ]
+                },
+                {
+                    "Update": {
+                        "TableName": os.environ["ORDERS_TABLE"],
+                        "Key": {"order_id": {"S": detail["order_id"]}},
+                        "UpdateExpression": "SET #status = :processing, processing_event_id = :event, processing_started_at = :now",
+                        "ConditionExpression": "attribute_exists(order_id) AND #status = :created AND customer_id = :customer AND created_at = :created_at AND #items = :items",
+                        "ExpressionAttributeNames": {"#status": "status", "#items": "items"},
+                        "ExpressionAttributeValues": {
+                            ":processing": {"S": "PROCESSING"},
+                            ":created": {"S": "CREATED"},
+                            ":customer": {"S": detail["customer_id"]},
+                            ":created_at": {"S": detail["created_at"]},
+                            ":items": serializer.serialize(detail["items"]),
+                            ":event": {"S": event_id},
+                            ":now": {"S": processed_at},
+                        },
+                    }
+                },
+            ],
         )
     except ClientError as error:
         # Another invocation may have processed the same event concurrently.

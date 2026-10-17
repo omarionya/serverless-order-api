@@ -1,4 +1,5 @@
 """Offline application-control-flow tests; SDK calls/encoding are mocked."""
+
 import hashlib
 import importlib.util
 import json
@@ -24,13 +25,15 @@ class ClientError(Exception):
 
 errors = types.ModuleType("botocore.exceptions")
 errors.ClientError = ClientError
-sys.modules.update({
-    "boto3": sdk,
-    "boto3.dynamodb": types.ModuleType("boto3.dynamodb"),
-    "boto3.dynamodb.types": ddb_types,
-    "botocore": types.ModuleType("botocore"),
-    "botocore.exceptions": errors
-})
+sys.modules.update(
+    {
+        "boto3": sdk,
+        "boto3.dynamodb": types.ModuleType("boto3.dynamodb"),
+        "boto3.dynamodb.types": ddb_types,
+        "botocore": types.ModuleType("botocore"),
+        "botocore.exceptions": errors,
+    }
+)
 path = Path(__file__).resolve().parents[1] / "services/order_processor/src/handler.py"
 spec = importlib.util.spec_from_file_location("processor", path)
 processor = importlib.util.module_from_spec(spec)
@@ -39,7 +42,9 @@ spec.loader.exec_module(processor)
 
 class ProcessorTests(unittest.TestCase):
     def setUp(self):
-        env = patch.dict(os.environ, {"ORDERS_TABLE": "orders", "PROCESSED_EVENTS_TABLE": "processed"})
+        env = patch.dict(
+            os.environ, {"ORDERS_TABLE": "orders", "PROCESSED_EVENTS_TABLE": "processed"}
+        )
         env.start()
         self.addCleanup(env.stop)
         processor.dynamodb = MagicMock()
@@ -50,23 +55,32 @@ class ProcessorTests(unittest.TestCase):
         logging.start()
         self.addCleanup(logging.stop)
         self.detail = {
-            "schema_version": 1, "event_id": "stable-event-1",
-            "order_id": "order-1", "customer_id": "customer-1",
+            "schema_version": 1,
+            "event_id": "stable-event-1",
+            "order_id": "order-1",
+            "customer_id": "customer-1",
             "created_at": "2026-10-12T10:00:00+00:00",
-            "status": "CREATED", "items": [{"product_id": "p1", "quantity": 2}]
+            "status": "CREATED",
+            "items": [{"product_id": "p1", "quantity": 2}],
         }
         self.envelope = {
-            "id": "envelope-1", "source": "com.example.orders",
-            "detail-type": "OrderCreated", "detail": self.detail
+            "id": "envelope-1",
+            "source": "com.example.orders",
+            "detail-type": "OrderCreated",
+            "detail": self.detail,
         }
 
     def record(self, message_id="message-1"):
         return {"messageId": message_id, "body": json.dumps(self.envelope)}
 
     def stored(self):
-        return {"Item": {"event_hash": hashlib.sha256(
-            json.dumps(self.detail, sort_keys=True, separators=(",", ":")).encode()
-        ).hexdigest()}}
+        return {
+            "Item": {
+                "event_hash": hashlib.sha256(
+                    json.dumps(self.detail, sort_keys=True, separators=(",", ":")).encode()
+                ).hexdigest()
+            }
+        }
 
     def test_atomic_dedupe_and_order_update(self):
         result = processor.lambda_handler({"Records": [self.record()]}, None)
@@ -82,13 +96,17 @@ class ProcessorTests(unittest.TestCase):
 
     def test_duplicate_skips_all_writes(self):
         processor.dynamodb.Table.return_value.get_item.return_value = self.stored()
-        self.assertEqual(processor.lambda_handler({"Records": [self.record()]}, None), {"batchItemFailures": []})
+        self.assertEqual(
+            processor.lambda_handler({"Records": [self.record()]}, None), {"batchItemFailures": []}
+        )
         processor.transaction_client.transact_write_items.assert_not_called()
 
     def test_new_envelope_id_still_deduplicates(self):
         processor.dynamodb.Table.return_value.get_item.return_value = self.stored()
         self.envelope["id"] = "new-envelope-from-replay"
-        self.assertEqual(processor.lambda_handler({"Records": [self.record()]}, None), {"batchItemFailures": []})
+        self.assertEqual(
+            processor.lambda_handler({"Records": [self.record()]}, None), {"batchItemFailures": []}
+        )
         processor.transaction_client.transact_write_items.assert_not_called()
 
     def test_same_event_id_changed_payload_is_rejected(self):
@@ -100,15 +118,17 @@ class ProcessorTests(unittest.TestCase):
 
     def test_concurrent_winner_is_acknowledged(self):
         processor.dynamodb.Table.return_value.get_item.side_effect = [{}, self.stored()]
-        processor.transaction_client.transact_write_items.side_effect = ClientError({
-            "Error": {"Code": "TransactionCanceledException"}
-        })
-        self.assertEqual(processor.lambda_handler({"Records": [self.record()]}, None), {"batchItemFailures": []})
+        processor.transaction_client.transact_write_items.side_effect = ClientError(
+            {"Error": {"Code": "TransactionCanceledException"}}
+        )
+        self.assertEqual(
+            processor.lambda_handler({"Records": [self.record()]}, None), {"batchItemFailures": []}
+        )
 
     def test_failed_transaction_is_not_acknowledged(self):
-        processor.transaction_client.transact_write_items.side_effect = ClientError({
-            "Error": {"Code": "TransactionCanceledException"}
-        })
+        processor.transaction_client.transact_write_items.side_effect = ClientError(
+            {"Error": {"Code": "TransactionCanceledException"}}
+        )
         result = processor.lambda_handler({"Records": [self.record()]}, None)
         self.assertEqual(result, {"batchItemFailures": [{"itemIdentifier": "message-1"}]})
 

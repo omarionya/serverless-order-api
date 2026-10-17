@@ -16,6 +16,13 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+
+      - name: Install lint and security tools
+        run: python -m pip install -r requirements-security.txt
+
+      - name: Lint and security checks
+        run: bash scripts/security_checks.sh
+
       - uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: ${{ vars.TERRAFORM_VERSION }}

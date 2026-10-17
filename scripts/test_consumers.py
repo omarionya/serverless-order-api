@@ -1,4 +1,5 @@
 """Offline tests: application behavior only; AWS clients are mocked."""
+
 import hashlib
 import importlib.util
 import json
@@ -24,10 +25,14 @@ class ClientError(Exception):
 
 errors = types.ModuleType("botocore.exceptions")
 errors.ClientError = ClientError
-sys.modules.update({
-    "boto3": sdk, "botocore": types.ModuleType("botocore"),
-    "botocore.config": config, "botocore.exceptions": errors
-})
+sys.modules.update(
+    {
+        "boto3": sdk,
+        "botocore": types.ModuleType("botocore"),
+        "botocore.config": config,
+        "botocore.exceptions": errors,
+    }
+)
 root = Path(__file__).resolve().parents[1]
 
 
@@ -44,9 +49,9 @@ sender = load("sender", root / "services/email_sender/src/handler.py")
 
 class ConsumerTests(unittest.TestCase):
     def setUp(self):
-        env = patch.dict(os.environ, {
-            "RECORDS_TABLE": "notifications", "CONSUMER_KIND": "notifications"
-        })
+        env = patch.dict(
+            os.environ, {"RECORDS_TABLE": "notifications", "CONSUMER_KIND": "notifications"}
+        )
         env.start()
         self.addCleanup(env.stop)
         consumer.dynamodb = MagicMock()
@@ -56,22 +61,32 @@ class ConsumerTests(unittest.TestCase):
         log.start()
         self.addCleanup(log.stop)
         self.detail = {
-            "schema_version": 1, "event_id": "stable-1", "order_id": "order-1",
-            "customer_id": "customer-1", "created_at": "2026-10-12T12:00:00+00:00",
-            "status": "CREATED", "items": [{"product_id": "p1", "quantity": 3}]
+            "schema_version": 1,
+            "event_id": "stable-1",
+            "order_id": "order-1",
+            "customer_id": "customer-1",
+            "created_at": "2026-10-12T12:00:00+00:00",
+            "status": "CREATED",
+            "items": [{"product_id": "p1", "quantity": 3}],
         }
         self.event = {
-            "source": "com.example.orders", "detail-type": "OrderCreated",
-            "id": "envelope-1", "detail": self.detail
+            "source": "com.example.orders",
+            "detail-type": "OrderCreated",
+            "id": "envelope-1",
+            "detail": self.detail,
         }
 
     def record(self):
         return {"messageId": "m1", "body": json.dumps(self.event)}
 
     def stored(self):
-        return {"Item": {"event_hash": hashlib.sha256(
-            json.dumps(self.detail, sort_keys=True, separators=(",", ":")).encode()
-        ).hexdigest()}}
+        return {
+            "Item": {
+                "event_hash": hashlib.sha256(
+                    json.dumps(self.detail, sort_keys=True, separators=(",", ":")).encode()
+                ).hexdigest()
+            }
+        }
 
     def test_notification_saved_pending_once(self):
         result = consumer.lambda_handler({"Records": [self.record()]}, None)
@@ -103,32 +118,53 @@ class ConsumerTests(unittest.TestCase):
 
     def test_concurrent_conditional_write_is_deduplicated(self):
         self.table.get_item.side_effect = [{}, self.stored()]
-        self.table.put_item.side_effect = ClientError({"Error": {"Code": "ConditionalCheckFailedException"}})
-        self.assertEqual(consumer.lambda_handler({"Records": [self.record()]}, None), {"batchItemFailures": []})
+        self.table.put_item.side_effect = ClientError(
+            {"Error": {"Code": "ConditionalCheckFailedException"}}
+        )
+        self.assertEqual(
+            consumer.lambda_handler({"Records": [self.record()]}, None), {"batchItemFailures": []}
+        )
 
     def test_only_bad_message_is_retried(self):
-        result = consumer.lambda_handler({"Records": [self.record(), {"messageId": "bad", "body": "{"}]}, None)
+        result = consumer.lambda_handler(
+            {"Records": [self.record(), {"messageId": "bad", "body": "{"}]}, None
+        )
         self.assertEqual(result["batchItemFailures"], [{"itemIdentifier": "bad"}])
 
 
 class SenderTests(unittest.TestCase):
     def setUp(self):
-        env = patch.dict(os.environ, {
-            "NOTIFICATIONS_TABLE": "notifications", "COGNITO_POOL_ID": "pool",
-            "SES_SENDER_EMAIL": "sender@example.com"
-        })
+        env = patch.dict(
+            os.environ,
+            {
+                "NOTIFICATIONS_TABLE": "notifications",
+                "COGNITO_POOL_ID": "pool",
+                "SES_SENDER_EMAIL": "sender@example.com",
+            },
+        )
         env.start()
         self.addCleanup(env.stop)
         sender.cognito = MagicMock()
         sender.ses = MagicMock()
         sender.ses.send_email.return_value = {"MessageId": "ses-1"}
-        sender.cognito.list_users.return_value = {"Users": [{"Attributes": [
-            {"Name": "sub", "Value": "customer-1"},
-            {"Name": "email", "Value": "customer@example.com"},
-            {"Name": "email_verified", "Value": "true"}
-        ]}]}
+        sender.cognito.list_users.return_value = {
+            "Users": [
+                {
+                    "Attributes": [
+                        {"Name": "sub", "Value": "customer-1"},
+                        {"Name": "email", "Value": "customer@example.com"},
+                        {"Name": "email_verified", "Value": "true"},
+                    ]
+                }
+            ]
+        }
         self.table = MagicMock()
-        self.item = {"event_id": "stable-1", "customer_id": "customer-1", "order_id": "order-1", "total_units": 3}
+        self.item = {
+            "event_id": "stable-1",
+            "customer_id": "customer-1",
+            "order_id": "order-1",
+            "total_units": 3,
+        }
         for method in ("error", "exception"):
             log = patch.object(sender.logger, method)
             log.start()
@@ -139,9 +175,11 @@ class SenderTests(unittest.TestCase):
         self.table.update_item.side_effect = lambda **kwargs: steps.append(
             "SENT" if ":sent" in kwargs["ExpressionAttributeValues"] else "SENDING"
         )
+
         def send(**kwargs):
             steps.append("SES")
             return {"MessageId": "ses-1"}
+
         sender.ses.send_email.side_effect = send
         sender.send_pending(self.table, self.item)
         self.assertEqual(steps, ["SENDING", "SES", "SENT"])
@@ -150,27 +188,38 @@ class SenderTests(unittest.TestCase):
         self.assertEqual(last[":message"], "ses-1")
 
     def test_failed_claim_does_not_send(self):
-        self.table.update_item.side_effect = ClientError({"Error": {"Code": "ConditionalCheckFailedException"}})
+        self.table.update_item.side_effect = ClientError(
+            {"Error": {"Code": "ConditionalCheckFailedException"}}
+        )
         sender.send_pending(self.table, self.item)
         sender.ses.send_email.assert_not_called()
 
     def test_ambiguous_send_failure_requires_review(self):
         sender.ses.send_email.side_effect = TimeoutError("Response lost")
         sender.send_pending(self.table, self.item)
-        self.assertEqual(self.table.update_item.call_args.kwargs["ExpressionAttributeValues"][":review"], "REVIEW")
+        self.assertEqual(
+            self.table.update_item.call_args.kwargs["ExpressionAttributeValues"][":review"],
+            "REVIEW",
+        )
         sender.ses.send_email.assert_called_once()
 
     def test_sent_status_save_failure_requires_review_without_resend(self):
         self.table.update_item.side_effect = [{}, RuntimeError("Database unavailable"), {}]
         sender.send_pending(self.table, self.item)
         sender.ses.send_email.assert_called_once()
-        self.assertEqual(self.table.update_item.call_args.kwargs["ExpressionAttributeValues"][":review"], "REVIEW")
+        self.assertEqual(
+            self.table.update_item.call_args.kwargs["ExpressionAttributeValues"][":review"],
+            "REVIEW",
+        )
 
     def test_unverified_email_is_failed_without_send(self):
         sender.cognito.list_users.return_value["Users"][0]["Attributes"][-1]["Value"] = "false"
         sender.send_pending(self.table, self.item)
         sender.ses.send_email.assert_not_called()
-        self.assertEqual(self.table.update_item.call_args.kwargs["ExpressionAttributeValues"][":failed"], "FAILED")
+        self.assertEqual(
+            self.table.update_item.call_args.kwargs["ExpressionAttributeValues"][":failed"],
+            "FAILED",
+        )
 
     def test_worker_queries_only_pending_for_sending(self):
         sender.dynamodb = MagicMock()

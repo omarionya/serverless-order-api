@@ -36,7 +36,7 @@ def response(status_code, payload):
     return {
         "statusCode": status_code,
         "headers": {"Content-Type": "application/json"},
-        "body": json.dumps(payload, default=json_default)
+        "body": json.dumps(payload, default=json_default),
     }
 
 
@@ -134,48 +134,50 @@ def create_order(event):
         "customer_id": customer_id,
         "items": items,
         "status": "CREATED",
-        "created_at": created_at
+        "created_at": created_at,
     }
     result = {"order_id": order_id, "status": "CREATED", "created_at": created_at}
     record = {
         "request_key": request_key,
         "request_hash": request_hash,
         "expires_at": now + IDEMPOTENCY_SECONDS,
-        "response": result
+        "response": result,
     }
     outbox = {
         "event_id": event_id,
         "source": "com.example.orders",
         "detail_type": "OrderCreated",
         "created_at": created_at,
-        "detail_json": json.dumps({
-            "schema_version": 1,
-            "event_id": event_id,
-            **order
-        })
+        "detail_json": json.dumps({"schema_version": 1, "event_id": event_id, **order}),
     }
 
     try:
         transaction_client.transact_write_items(
             ClientRequestToken=order_id,
             TransactItems=[
-                {"Put": {
-                    "TableName": os.environ["IDEMPOTENCY_TABLE"],
-                    "Item": typed_item(record),
-                    "ConditionExpression": "attribute_not_exists(request_key) OR expires_at <= :now",
-                    "ExpressionAttributeValues": {":now": {"N": str(now)}}
-                }},
-                {"Put": {
-                    "TableName": os.environ["ORDERS_TABLE"],
-                    "Item": typed_item(order),
-                    "ConditionExpression": "attribute_not_exists(order_id)"
-                }},
-                {"Put": {
-                    "TableName": os.environ["OUTBOX_TABLE"],
-                    "Item": typed_item(outbox),
-                    "ConditionExpression": "attribute_not_exists(event_id)"
-                }}
-            ]
+                {
+                    "Put": {
+                        "TableName": os.environ["IDEMPOTENCY_TABLE"],
+                        "Item": typed_item(record),
+                        "ConditionExpression": "attribute_not_exists(request_key) OR expires_at <= :now",
+                        "ExpressionAttributeValues": {":now": {"N": str(now)}},
+                    }
+                },
+                {
+                    "Put": {
+                        "TableName": os.environ["ORDERS_TABLE"],
+                        "Item": typed_item(order),
+                        "ConditionExpression": "attribute_not_exists(order_id)",
+                    }
+                },
+                {
+                    "Put": {
+                        "TableName": os.environ["OUTBOX_TABLE"],
+                        "Item": typed_item(outbox),
+                        "ConditionExpression": "attribute_not_exists(event_id)",
+                    }
+                },
+            ],
         )
     except ClientError as error:
         # A concurrent request can win the conditional transaction. Read its

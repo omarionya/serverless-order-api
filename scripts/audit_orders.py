@@ -1,4 +1,5 @@
 """Read-only, bounded cross-table audit. No AWS writes or event replay."""
+
 import argparse
 import hashlib
 import json
@@ -35,7 +36,7 @@ def audit(tables, now, min_age=600, since=None, max_rows=1000, include_email=Fal
         request = {
             "Limit": min(100, max_rows - scanned),
             "ConsistentRead": True,
-            "ProjectionExpression": "event_id, created_at, detail_json"
+            "ProjectionExpression": "event_id, created_at, detail_json",
         }
         if start_key:
             request["ExclusiveStartKey"] = start_key
@@ -111,7 +112,7 @@ def audit(tables, now, min_age=600, since=None, max_rows=1000, include_email=Fal
         "events_checked": checked,
         "truncated": truncated,
         "finding_count": len(findings),
-        "findings": findings
+        "findings": findings,
     }
 
 
@@ -119,8 +120,14 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     for table in ("outbox", "orders", "processed", "notifications", "analytics"):
         parser.add_argument(f"--{table}-table")
-    parser.add_argument("--config-json", help="JSON map of table names exported from the reconciliation_tables Terraform output.")
-    parser.add_argument("--since", help="ISO timestamp with timezone; use the chunk 6 deployment time to exclude older events.")
+    parser.add_argument(
+        "--config-json",
+        help="JSON map of table names exported from the reconciliation_tables Terraform output.",
+    )
+    parser.add_argument(
+        "--since",
+        help="ISO timestamp with timezone; use the chunk 6 deployment time to exclude older events.",
+    )
     parser.add_argument("--min-age-seconds", type=int, default=600)
     parser.add_argument("--max-rows", type=int, default=1000)
     parser.add_argument("--include-email", action="store_true")
@@ -132,16 +139,20 @@ def main():
         for key in ("outbox", "orders", "processed", "notifications", "analytics")
     }
     if any(not isinstance(value, str) or not value for value in names.values()):
-        parser.error("Supply all five table names through --config-json or individual --*-table arguments.")
+        parser.error(
+            "Supply all five table names through --config-json or individual --*-table arguments."
+        )
     import boto3
+
     resource = boto3.resource("dynamodb")
-    tables = {
-        key: resource.Table(value) for key, value in names.items()
-    }
+    tables = {key: resource.Table(value) for key, value in names.items()}
     report = audit(
-        tables, datetime.now(timezone.utc), args.min_age_seconds,
+        tables,
+        datetime.now(timezone.utc),
+        args.min_age_seconds,
         aware(args.since) if args.since else None,
-        args.max_rows, args.include_email
+        args.max_rows,
+        args.include_email,
     )
     rendered = json.dumps(report, indent=2)
     if args.report:
