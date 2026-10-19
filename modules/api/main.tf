@@ -1,6 +1,10 @@
 resource "aws_api_gateway_rest_api" "orders" {
   name        = var.api_name
   description = "Order creation and retrieval API."
+  lifecycle {
+    create_before_destroy = true
+  }
+
 
   endpoint_configuration {
     types = ["REGIONAL"]
@@ -113,6 +117,7 @@ resource "aws_api_gateway_deployment" "orders" {
         }
       }
     }))
+
   }
 
   depends_on = [
@@ -129,6 +134,7 @@ resource "aws_api_gateway_stage" "dev" {
   rest_api_id   = aws_api_gateway_rest_api.orders.id
   deployment_id = aws_api_gateway_deployment.orders.id
   stage_name    = var.stage_name
+  cache_cluster_enabled = true
 
 
   xray_tracing_enabled = true
@@ -159,6 +165,7 @@ resource "aws_api_gateway_method_settings" "throttling" {
     throttling_rate_limit  = 10
     logging_level          = "ERROR"
     data_trace_enabled     = false
+    caching_enabled        = true
   }
 }
 resource "aws_api_gateway_authorizer" "cognito" {
