@@ -131,9 +131,9 @@ resource "aws_api_gateway_deployment" "orders" {
 }
 
 resource "aws_api_gateway_stage" "dev" {
-  rest_api_id   = aws_api_gateway_rest_api.orders.id
-  deployment_id = aws_api_gateway_deployment.orders.id
-  stage_name    = var.stage_name
+  rest_api_id           = aws_api_gateway_rest_api.orders.id
+  deployment_id         = aws_api_gateway_deployment.orders.id
+  stage_name            = var.stage_name
   cache_cluster_enabled = true
 
 
