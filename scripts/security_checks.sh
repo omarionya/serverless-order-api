@@ -8,6 +8,4 @@ echo "Checking Python formatting"
 ruff format --check services scripts
 
 echo "Scanning Python for security issues"
-bandit -r services scripts --exclude scripts/test_*.py
-
-
+bandit -r services scripts --exclude 'scripts/test_*.py'
