@@ -1,0 +1,22 @@
+# Confirm these inputs against your current environment/dev/variables.tf.
+# Add any required Cognito/domain/callback inputs declared there.
+aws_region  = "us-east-1"
+project     = "order-api"
+environment = "dev"
+
+tags = {
+  Owner      = "your-team"
+  CostCenter = "your-cost-center"
+}
+
+# Optional SES delivery. Enable only after configuring verified identities.
+enable_email_delivery = false
+ses_sender_email      = ""
+ses_identity_arn      = ""
+
+# Add real recipients locally and confirm their SNS subscriptions.
+alert_emails = []
+
+# Keep the value used by your existing deployment.
+# Set true only when this root owns the regional logging-role configuration.
+manage_apigateway_logging_account = false
